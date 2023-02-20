@@ -41,7 +41,25 @@ class StreamTransform(InlineMapper):
             ),
             required=True,
             description="Stream maps",
-        )
+        ),
+        th.Property(
+            "flattening_enabled",
+            th.BooleanType(),
+            description=(
+                "'True' to enable schema flattening and automatically expand nested "
+                "properties."
+            ),
+        ),
+        th.Property(
+            "flattening_max_depth",
+            th.IntegerType(),
+            description="The max depth to flatten schemas.",
+        ),
+        th.Property(
+            "flatten_array",
+            th.ArrayType(wrapped_type=th.StringType()),
+            description="Whether to explode and flatten these arrays",
+        ),
     ).to_dict()
 
     def __init__(
@@ -113,15 +131,27 @@ class StreamTransform(InlineMapper):
 
         stream_id: str = message_dict["stream"]
         for stream_map in self.mapper.stream_maps[stream_id]:
-            mapped_record = stream_map.transform(message_dict["record"])
-            if mapped_record is not None:
-                record_message = singer.RecordMessage(
-                    stream=stream_map.stream_alias,
-                    record=mapped_record,
-                    version=message_dict.get("version"),
-                    time_extracted=utc_now(),
-                )
-                yield record_message
+            mapped_records = stream_map.transform(message_dict["record"])
+            if type(mapped_records)==list:
+                for mapped_record in mapped_records:
+                    if mapped_record is not None:
+                        record_message = singer.RecordMessage(
+                            stream=stream_map.stream_alias,
+                            record=mapped_record,
+                            version=message_dict.get("version"),
+                            time_extracted=utc_now(),
+                        )
+                        yield record_message
+            else:
+                mapped_record = mapped_records            
+                if mapped_record is not None:
+                    record_message = singer.RecordMessage(
+                        stream=stream_map.stream_alias,
+                        record=mapped_record,
+                        version=message_dict.get("version"),
+                        time_extracted=utc_now(),
+                    )
+                    yield record_message
 
     def map_state_message(self, message_dict: dict) -> List[singer.Message]:
         """Do nothing to the message.
